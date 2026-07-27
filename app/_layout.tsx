@@ -1,56 +1,64 @@
-import { useFonts } from 'expo-font';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
-import 'react-native-reanimated';
+import 'react-native-get-random-values'; // MUST be the very first import — fixes crypto-js on native
 
-import { useColorScheme } from '@/components/useColorScheme';
+import { Drawer } from 'expo-router/drawer';
+import { useEffect, useState } from 'react';
+import { TouchableOpacity, Text, Alert } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { initDB } from '../db/database';
+import { startSyncListener } from '../sync/syncEngine';
+import { useNoteStore } from '../store/useNoteStore';
 
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
+const TEAL = '#0f3c44';
 
-export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
-  initialRouteName: '(tabs)',
-};
-
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
-
-export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
-
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
-  useEffect(() => {
-    if (error) throw error;
-  }, [error]);
+export default function Layout() {
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded]);
+    (async () => {
+      await initDB(); // now async — loads/creates the local encryption key first
+      startSyncListener();
+      setReady(true);
+    })();
+  }, []);
 
-  if (!loaded) {
-    return null;
-  }
-
-  return <RootLayoutNav />;
-}
-
-function RootLayoutNav() {
-  const colorScheme = useColorScheme();
+  if (!ready) return null;
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-      </Stack>
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+    <Drawer
+      screenOptions={{
+        headerShown: true,
+        headerStyle: { backgroundColor: TEAL },
+        headerTintColor: '#fff',
+        headerTitleStyle: { fontWeight: '700', fontSize: 20 },
+        headerTitleAlign: 'center',
+      }}
+    >
+  <Drawer.Screen
+    name="index"
+    options={{
+      drawerLabel: 'All Notes',
+      title: '',
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => Alert.alert('Settings', 'Settings screen not set up yet.')}
+          style={{ marginRight: 16 }}
+        >
+          <Text style={{ fontSize: 20 }}></Text>
+        </TouchableOpacity>
+      ),
+    }}
+    listeners={{
+      drawerItemPress: () => {
+        useNoteStore.getState().setActiveFolder(null);
+      },
+    }}
+  />
+  <Drawer.Screen name="history" options={{ drawerLabel: 'History', headerShown: false }} />
+  <Drawer.Screen name="note/[id]" options={{ headerShown: false, drawerItemStyle: { display: 'none' } }} />
+  <Drawer.Screen name="modal" options={{ drawerItemStyle: { display: 'none' } }} />
+  <Drawer.Screen name="+not-found" options={{ drawerItemStyle: { display: 'none' } }} />
+</Drawer>
+    </GestureHandlerRootView>
   );
 }
