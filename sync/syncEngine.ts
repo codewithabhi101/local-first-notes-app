@@ -2,7 +2,7 @@ import NetInfo from '@react-native-community/netinfo';
 import axios from 'axios';
 import { db, markSynced, upsertFromServer } from '../db/database';
 
-const API_URL = 'http://10.149.146.250:4000/api/notes';
+const API_URL = 'https://local-first-notes-app.onrender.com/api/notes';
 
 export async function syncPendingNotes() {
   const pending = db.getAllSync(
