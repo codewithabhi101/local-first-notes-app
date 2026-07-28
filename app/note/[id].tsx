@@ -28,6 +28,9 @@ export default function NoteEditor() {
   const [selection, setSelection] = useState({ start: 0, end: 0 });
 
   const defaultTitleRef = useRef('');
+  // Holds the pending autosave timer so the Save button can cancel it and
+  // save immediately instead of waiting for the debounce delay.
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const resetToBlankNote = () => {
     const prefilled = openedFromChip ? (titleParam as string) : '';
@@ -71,27 +74,51 @@ export default function NoteEditor() {
     }
   }, [id, folder, titleParam]);
 
-  useEffect(() => {
-    const t = setTimeout(() => {
-      const titleChangedByUser = title.trim() !== defaultTitleRef.current.trim();
-      const hasRealContent = content.trim().length > 0 || titleChangedByUser || tags.trim().length > 0;
+  // The actual save logic — creates the note if it doesn't exist yet, or
+  // updates it if it does. Shared by both the autosave timer and the
+  // explicit Save button, so they always behave identically.
+  const performSave = (): string | null => {
+    const titleChangedByUser = title.trim() !== defaultTitleRef.current.trim();
+    const hasRealContent = content.trim().length > 0 || titleChangedByUser || tags.trim().length > 0;
 
-      if (!noteId) {
-        if (!hasRealContent) return;
-        const newId = addNote(title, content, folderParam);
-        setNoteId(newId);
-        markNoteOpened(newId);
-        if (tags.trim()) setNoteTags(newId, tags);
-      } else if (!conflict) {
-        editNote(noteId, title, content);
-        setNoteTags(noteId, tags);
-      }
+    if (!noteId) {
+      if (!hasRealContent) return null; // nothing to save yet
+      const newId = addNote(title, content, folderParam);
+      setNoteId(newId);
+      markNoteOpened(newId);
+      if (tags.trim()) setNoteTags(newId, tags);
+      return newId;
+    } else if (!conflict) {
+      editNote(noteId, title, content);
+      setNoteTags(noteId, tags);
+      return noteId;
+    }
+    return noteId;
+  };
+
+  // Autosave: still runs in the background 400ms after you stop typing,
+  // so nothing is lost even if you never tap Save.
+  useEffect(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      performSave();
     }, 400);
-    return () => clearTimeout(t);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
   }, [title, content, tags]);
 
-  const handleNewNote = () => {
-    resetToBlankNote();
+  // Explicit Save button — cancels the pending autosave timer, saves right
+  // now, and takes you back to the list so you can see it there immediately.
+  const handleSave = () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    const savedId = performSave();
+    if (!savedId) {
+      Alert.alert('Nothing to save', 'Write a title or some content first.');
+      return;
+    }
+    setActiveFolder(null);
+    router.back();
   };
 
   const handleBack = () => {
@@ -131,8 +158,6 @@ export default function NoteEditor() {
     setConflict(null);
   };
 
-  // Wraps the current selection (or inserts at cursor if nothing selected)
-  // with markdown syntax — e.g. **bold**, *italic*.
   const wrapSelection = (before: string, after: string = before) => {
     const { start, end } = selection;
     const selected = content.slice(start, end);
@@ -140,7 +165,6 @@ export default function NoteEditor() {
     setContent(newText);
   };
 
-  // Inserts a line-prefix at the start of the current line — e.g. "# ", "- ".
   const prefixLine = (prefix: string) => {
     const { start } = selection;
     const lineStart = content.lastIndexOf('\n', start - 1) + 1;
@@ -155,6 +179,9 @@ export default function NoteEditor() {
       <View style={styles.headerBar}>
         <TouchableOpacity onPress={handleBack} style={styles.sideButton}>
           <Text style={styles.sideButtonText}>← Back</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleSave} style={styles.saveButton}>
+          <Text style={styles.saveButtonText}>Save</Text>
         </TouchableOpacity>
       </View>
 
@@ -197,7 +224,6 @@ export default function NoteEditor() {
           </View>
         )}
 
-        {/* Markdown formatting toolbar */}
         <View style={styles.toolbar}>
           <TouchableOpacity style={styles.toolbarButton} onPress={() => wrapSelection('**')}>
             <Text style={styles.toolbarButtonTextBold}>B</Text>
@@ -249,7 +275,10 @@ const styles = StyleSheet.create({
   },
   sideButton: { width: 70 },
   sideButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  headerTitle: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  saveButton: {
+    backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8,
+  },
+  saveButtonText: { color: TEAL, fontSize: 15, fontWeight: '700' },
   conflictBanner: {
     backgroundColor: '#fff4e5', borderBottomWidth: 1, borderBottomColor: '#f0c987',
     padding: 14,
