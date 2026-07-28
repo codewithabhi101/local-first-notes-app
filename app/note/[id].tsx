@@ -109,7 +109,9 @@ export default function NoteEditor() {
   }, [title, content, tags]);
 
   // Explicit Save button — cancels the pending autosave timer, saves right
-  // now, and takes you back to the list so you can see it there immediately.
+  // now, then immediately resets to a fresh blank note (same folder/title
+  // context if opened from a chip) so you can keep adding notes back to back
+  // without leaving this screen each time.
   const handleSave = () => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     const savedId = performSave();
@@ -117,8 +119,7 @@ export default function NoteEditor() {
       Alert.alert('Nothing to save', 'Write a title or some content first.');
       return;
     }
-    setActiveFolder(null);
-    router.back();
+    resetToBlankNote();
   };
 
   const handleBack = () => {
